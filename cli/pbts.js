@@ -5,8 +5,7 @@ var child_process = require("child_process"),
     pkg      = require("./package.json"),
     minimist = require("minimist"),
     chalk    = require("chalk"),
-    glob     = require("glob"),
-    tmp      = require("tmp");
+    glob     = require("glob");
 
 /**
  * Runs pbts programmatically.
@@ -82,112 +81,12 @@ exports.main = function(args, callback) {
         });
         process.stdin.on("end", function() {
             files[0] = tmp.tmpNameSync() + ".js";
-            fs.writeFileSync(files[0], Buffer.concat(data));
             cleanup.push(files[0]);
-            callJsdoc();
         });
 
     // Load from disk
     } else {
-        callJsdoc();
+
     }
-
-    function callJsdoc() {
-
-        // There is no proper API for jsdoc, so this executes the CLI and pipes the output
-        var basedir = path.join(__dirname, ".");
-        var moduleName = argv.name || "null";
-        var nodePath = process.execPath;
-        var cmd = "\"" + nodePath + "\" \"" + require.resolve("jsdoc/jsdoc.js") + "\" -c \"" + path.join(basedir, "lib", "tsd-jsdoc.json") + "\" -q \"module=" + encodeURIComponent(moduleName) + "&comments=" + Boolean(argv.comments) + "\" " + files.map(function(file) { return "\"" + file + "\""; }).join(" ");
-        var child = child_process.exec(cmd, {
-            cwd: process.cwd(),
-            argv0: "node",
-            stdio: "pipe",
-            maxBuffer: 1 << 24 // 16mb
-        });
-        var out = [];
-        var ended = false;
-        var closed = false;
-        child.stdout.on("data", function(data) {
-            out.push(data);
-        });
-        child.stdout.on("end", function() {
-            if (closed) finish();
-            else ended = true;
-        });
-        child.stderr.pipe(process.stderr);
-        child.on("close", function(code) {
-            // clean up temporary files, no matter what
-            try { cleanup.forEach(fs.unlinkSync); } catch(e) {/**/} cleanup = [];
-
-            if (code) {
-                out = out.join("").replace(/\s*JSDoc \d+\.\d+\.\d+ [^$]+/, "");
-                process.stderr.write(out);
-                var err = Error("code " + code);
-                if (callback)
-                    return callback(err);
-                throw err;
-            }
-
-            if (ended) return finish();
-            closed = true;
-            return undefined;
-        });
-
-        function getImportName(importItem) {
-            return path.basename(importItem, ".js").replace(/([-_~.+]\w)/g, function(match) {
-                return match[1].toUpperCase();
-            });
-        }
-
-        function finish() {
-            var output = [];
-            if (argv.main)
-                output.push(
-                    "// DO NOT EDIT! This is a generated file. Edit the JSDoc in src/*.js instead and run 'npm run types'.",
-                    ""
-                );
-            if (argv.global)
-                output.push(
-                    "export as namespace " + argv.global + ";",
-                    ""
-                );
-
-            if (!argv.main) {
-                // Ensure we have a usable array of imports
-                var importArray = typeof argv.import === "string" ? argv.import.split(",") : argv.import || [];
-
-                // Build an object of imports and paths
-                var imports = {
-                    $protobuf: "protobufjs"
-                };
-                importArray.forEach(function(importItem) {
-                    imports[getImportName(importItem)] = importItem;
-                });
-
-                // Write out the imports
-                Object.keys(imports).forEach(function(key) {
-                    output.push("import * as " + key + " from \"" + imports[key] + "\";");
-                });
-            }
-
-            output = output.join("\n") + "\n" + out.join("");
-
-            try {
-                if (argv.out)
-                    fs.writeFileSync(argv.out, output, { encoding: "utf8" });
-                else if (!callback)
-                    process.stdout.write(output, "utf8");
-                return callback
-                    ? callback(null, output)
-                    : undefined;
-            } catch (err) {
-                if (callback)
-                    return callback(err);
-                throw err;
-            }
-        }
-    }
-
     return undefined;
 };
